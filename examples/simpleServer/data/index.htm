@@ -1,67 +1,168 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta http-equiv="Content-type" content="text/html; charset=utf-8">
-  <title>ESP simpleServer.ino</title>
-  
-  <!--Pico - Minimal CSS Framework for semantic info: HTML https://picocss.com/ -->
-  <link rel="stylesheet" type="text/css" href="css/pico.fluid.classless.css">
-
-  <!-- Cyustom page styling -->
-  <style>
-    html {
-      background-color: #92938fd1
-    }
-    .container {
-      display: flex;
-      justify-content: center;
-      min-height: calc(100vh - 6rem);
-      padding: 1rem 0;
-      
-    }    
-    .container {
-      max-width: 860px;
-      padding: 40px;
-    }
-  </style>
-
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8">
+    <title>ESP simpleServer.ino</title>
+    <link rel="stylesheet" type="text/css" href="css/pico.fluid.classless.css">
+    <style>
+        html { background-color: #92938fd1; }
+        .container {
+          /* max-width: 860px; */
+          min-width: 300px; padding: 40px;
+          display: flex; justify-content: center; align-items: center; min-height: 100vh;
+        }
+        .servos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+        }
+        .servo-settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .input-short {
+          max-width: 120px;
+        }
+    </style>
 </head>
-  <body>
-    <main class="container">
-      <article class="grid">
-        <div>
+<body>
+<main class="container" data-pgc-save-partial>
+    <article class="grid" style="width: 100%;">
+        <div style="margin: auto;">
           <hgroup>
-            <h1>ESP FS WebServer - LED Switcher</h1>
+              <h1>ESP servos</h1>
+              <label for="servoCount">Number of Servos: </label>
+              <input type="number" id="servoCount" value="13" min="1" max="13" onchange="generateServos()">
           </hgroup>
-          <label for="remember">
-            <input type="checkbox" role="switch" id="toggle-led" name="toggle-led">
-            Toggle built-in LED
-          </label>
-          <br>
-          <p id="esp-response"></p>
-          <img src="/img/espressif.jpg" style="opacity: 0.75"/>
+          <button onclick="downloadServoConfig()">Download Servo Configuration</button>
+          <input type="file" id="uploadConfig" accept="application/json" onchange="uploadServoConfig()">
+          <div id="servoContainer" class="servos-grid"></div>
         </div>
-      </article>
-    </main>
-    
-    <script type="text/javascript">
-      // This function fetch the GET request to the ESP webserver
-      function toggleLed() {
+    </article>
+</main>
+<script type="text/javascript">
+    function generateServos() {
+        const servoContainer = document.getElementById('servoContainer');
+        const servoCount = document.getElementById('servoCount').value;
+
+        // Clear existing servo controls
+        servoContainer.innerHTML = '';
+
+        // Generate servo controls dynamically
+        for (let i = 0; i < servoCount; i++) {
+            const servoDiv = document.createElement('div');
+            servoDiv.innerHTML = `
+                <label for="servo${i}">
+                    <p id="esp-response${i}">#${i}</p>
+                    <input type="range" id="servorange${i}" name="servo-value${i}" min="120" max="440" onchange="sendServo(${i})"/>
+                    <button type="button" onclick="toggleServoSettings(${i})">⛭</button>
+                </label>
+                <div id="servoSettings${i}" class="servo-settings-grid" style="display: none;">
+                    <div>
+                      <label for="servomin${i}">Min:</label>
+                      <input class="input-short" type="number" id="servomin${i}" name="servo-min${i}" onchange="changeMinMax(${i})" value="120"/>
+                    </div>
+                    <div>
+                      <label for="servomax${i}">Max:</label>
+                      <input class="input-short" type="number" id="servomax${i}" name="servo-max${i}" onchange="changeMinMax(${i})" value="440"/>
+                    </div>
+                    <div>
+                      <label for="servovalue${i}">Value:</label>
+                      <input class="input-short" type="number" id="servovalue${i}" name="servo-value${i}"/>
+                    </div>
+                    <button type="submit" id="servorun${i}" name="servo-run${i}" onclick="sendServoInstant(${i})"> Run manual servo </button>
+                </div>
+                <br>
+            `;
+            servoContainer.appendChild(servoDiv);
+        }
+    }
+
+    // Generate initial servos on page load
+    window.onload = generateServos;
+
+    function changeMinMax(num) {
+        document.getElementById(`servorange${num}`).setAttribute('min', document.getElementById(`servomin${num}`).value);
+        document.getElementById(`servorange${num}`).setAttribute('max', document.getElementById(`servomax${num}`).value);
+    }
+
+    function toggleServoSettings(num) {
+        var settings = document.getElementById(`servoSettings${num}`);
+        settings.style.display = settings.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function sendServoInstant(num) {
+        console.log('sendServoInstant: ' + num);
         const pars = new URLSearchParams({
-          val:  document.getElementById('toggle-led').checked ? '1' : '0'
+            num: num,
+            val: document.getElementById(`servovalue${num}`).value,
         });
-        
-        fetch('/led?' + pars )                // Do the request
-        .then(response => response.text())    // Parse the response 
-        .then(text => {                       // DO something with response
-          console.log(text);
-          document.getElementById('esp-response').innerHTML = text + ' <i>(Builtin LED is ON with a low signal)</i>';
+        console.log('sendServoInstant: ' + pars);
+
+        fetch('/servo?' + pars)
+            .then(response => response.text())
+            .then(text => {
+                console.log(text);
+                document.getElementById(`esp-response${num}`).innerHTML = text;
+            });
+    }
+
+    function sendServo(num) {
+        console.log('sendServo: ' + num);
+        const pars = new URLSearchParams({
+            num: num,
+            val: document.getElementById(`servorange${num}`).value,
         });
-      }
-      
-      // Add event listener to the LED checkbox (the function will be called on every change)
-      document.getElementById('toggle-led').addEventListener('change', toggleLed );
-    </script>
-    
-  </body>
+        console.log('sendServo: ' + pars);
+
+        fetch('/servo?' + pars)
+            .then(response => response.text())
+            .then(text => {
+                console.log(text);
+                document.getElementById(`esp-response${num}`).innerHTML = text;
+            });
+    }
+
+    function downloadServoConfig() {
+        const servoCount = document.getElementById('servoCount').value;
+        const config = [];
+
+        for (let i = 0; i < servoCount; i++) {
+            const min = document.getElementById(`servomin${i}`).value;
+            const max = document.getElementById(`servomax${i}`).value;
+            config.push({ servo: i, min: min, max: max });
+        }
+
+        const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'servo_config.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function uploadServoConfig() {
+        const fileInput = document.getElementById('uploadConfig');
+        const file = fileInput.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const config = JSON.parse(e.target.result);
+                document.getElementById('servoCount').value = config.length;
+                generateServos();
+                config.forEach(item => {
+                    document.getElementById(`servomin${item.servo}`).value = item.min;
+                    document.getElementById(`servomax${item.servo}`).value = item.max;
+                    changeMinMax(item.servo);
+                });
+                fileInput.value = '';
+            };
+            reader.readAsText(file);
+        }
+    }
+</script>
+</body>
 </html>
